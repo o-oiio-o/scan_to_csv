@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手机扫码记录器</title>
+    <!-- 引入 html5-qrcode 库 -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body {
+            font-family: -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h2 { color: #333; }
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+        }
+        .controls {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            color: white;
+        }
+        #download-btn { background-color: #28a745; }
+        #clear-btn { background-color: #dc3545; }
+        
+        #results-container {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 500px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+            font-size: 14px;
+        }
+        th { background-color: #eee; }
+        .success-flash {
+            background-color: #d4edda !important;
+            transition: background 0.5s;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>扫码记录器</h2>
+    
+    <!-- 扫描窗口 -->
+    <div id="reader"></div>
+
+    <div class="controls">
+        <button id="download-btn" onclick="exportToCSV()">下载 CSV</button>
+        <button id="clear-btn" onclick="clearResults()">清空记录</button>
+    </div>
+
+    <!-- 结果显示 -->
+    <div id="results-container">
+        <table id="results-table">
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>扫描结果</th>
+                </tr>
+            </thead>
+            <tbody id="results-body">
+                <!-- 动态生成 -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let scannedData = []; // 存储所有扫描结果
+
+        // 初始化扫描器
+        const html5QrCode = new Html5Qrcode("reader");
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        // 成功扫描的回调
+        function onScanSuccess(decodedText, decodedResult) {
+            const now = new Date();
+            const timeStr = now.getHours().toString().padStart(2, '0') + ":" + 
+                            now.getMinutes().toString().padStart(2, '0') + ":" + 
+                            now.getSeconds().toString().padStart(2, '0');
+            
+            // 记录数据
+            const entry = { time: timeStr, content: decodedText };
+            scannedData.push(entry);
+
+            // 更新界面
+            updateTable(entry);
+            
+            // 触觉反馈 (如果手机支持)
+            if (navigator.vibrate) navigator.vibrate(100);
+
+            // 暂停片刻防止重复扫描同一个码
+            html5QrCode.pause();
+            setTimeout(() => html5QrCode.resume(), 2000); 
+        }
+
+        function updateTable(entry) {
+            const tbody = document.getElementById('results-body');
+            const row = tbody.insertRow(0); // 插入到最前面
+            row.className = "success-flash";
+            row.insertCell(0).innerText = entry.time;
+            row.insertCell(1).innerText = entry.content;
+            
+            // 移除高亮效果
+            setTimeout(() => row.classList.remove("success-flash"), 500);
+        }
+
+        // 导出 CSV
+        function exportToCSV() {
+            if (scannedData.length === 0) {
+                alert("没有记录可导出");
+                return;
+            }
+
+            let csvContent = "\uFEFF"; // 添加 BOM 防止中文乱码
+            csvContent += "时间,扫描内容\n";
+            
+            scannedData.forEach(item => {
+                // 处理内容中的逗号，防止破坏CSV结构
+                let content = item.content.replace(/"/g, '""');
+                csvContent += `${item.time},"${content}"\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `scan_results_${new Date().getTime()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function clearResults() {
+            if (confirm("确定要清空所有记录吗？")) {
+                scannedData = [];
+                document.getElementById('results-body').innerHTML = "";
+            }
+        }
+
+        // 启动摄像头
+        function startCamera() {
+            // 优先使用后置摄像头 (facingMode: environment)
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config, 
+                onScanSuccess
+            ).catch(err => {
+                alert("摄像头启动失败: " + err);
+            });
+        }
+
+        // 页面加载后自动启动
+        window.addEventListener('DOMContentLoaded', startCamera);
+    </script>
+</body>
+</html>
