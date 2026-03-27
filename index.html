@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>精准扫码记录器</title>
+    <title>语音反馈扫码记录器</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
@@ -127,11 +127,39 @@
     <script>
         let scannedData = [];
         let html5QrCode = null;
+        let audioCtx = null; // 用于生成提示音
+        
         const statusEl = document.getElementById('status');
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
 
-        // 初始化扫码库实例
+        // 初始化提示音功能 (浏览器要求必须由用户点击触发)
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // 发出“滴”的一声
+        function playSuccessSound() {
+            if (!audioCtx) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine'; // 正弦波，声音清脆
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 音高
+            
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.2);
+        }
+
         function initScanner() {
             if (!html5QrCode) {
                 html5QrCode = new Html5Qrcode("reader");
@@ -140,6 +168,8 @@
 
         async function toggleCamera(start) {
             initScanner();
+            initAudio(); // 伴随用户点击初始化音频上下文
+
             if (start) {
                 const config = { fps: 10, qrbox: { width: 250, height: 250 } };
                 try {
@@ -151,7 +181,6 @@
                 } catch (err) {
                     statusEl.innerText = "启动失败: " + err;
                     statusEl.className = "status-bar status-error";
-                    console.error(err);
                 }
             } else {
                 if (html5QrCode) {
@@ -164,29 +193,31 @@
             }
         }
 
-        function onScanSuccess(decodedText, decodedResult) {
+        function onScanSuccess(decodedText) {
             // 1. 查重逻辑
             const isDuplicate = scannedData.some(item => item.content === decodedText);
             
             if (isDuplicate) {
                 statusEl.innerText = "⚠️ 重复内容，已跳过";
                 statusEl.className = "status-bar status-warn";
-                vibrate(50); // 短震动提示重复
+                // 重复时不播放声音，仅轻微震动提示
+                if (navigator.vibrate) navigator.vibrate(50);
                 return;
             }
 
-            // 2. 记录新数据
+            // 2. 成功逻辑：播放提示音 + 震动
+            playSuccessSound(); 
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
             const now = new Date();
             const timeStr = now.toLocaleTimeString();
             const entry = { time: timeStr, content: decodedText };
             
-            scannedData.unshift(entry); // 添加到数组开头
+            scannedData.unshift(entry);
             updateUI(entry);
             
-            // 3. 成功反馈
             statusEl.innerText = "✅ 扫描成功！";
             statusEl.className = "status-bar status-success";
-            vibrate([100, 50, 100]); // 成功震动反馈
             
             // 自动重置状态文字
             setTimeout(() => {
@@ -205,18 +236,12 @@
             document.getElementById('total-count').innerText = "总数: " + scannedData.length;
         }
 
-        function vibrate(pattern) {
-            if (navigator.vibrate) navigator.vibrate(pattern);
-        }
-
         function exportToCSV() {
             if (scannedData.length === 0) return alert("没有数据");
-            
             let csvContent = "\uFEFF时间,扫描内容\n";
             scannedData.forEach(item => {
                 csvContent += `${item.time},"${item.content.replace(/"/g, '""')}"\n`;
             });
-
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
@@ -232,11 +257,6 @@
                 statusEl.innerText = "已清空";
             }
         }
-
-        // 页面载入时尝试自动启动（部分浏览器可能拦截）
-        window.onload = () => {
-            setTimeout(() => toggleCamera(true), 1000);
-        };
     </script>
 </body>
 </html>
