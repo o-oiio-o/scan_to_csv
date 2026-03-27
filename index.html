@@ -17,6 +17,12 @@
             margin: 0; padding: 15px;
             background-color: #f8f9fa;
             color: #333;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        .container {
+            flex: 1; /* 使内容撑满空间，让页脚保持在底部 */
         }
         .card {
             background: white;
@@ -69,7 +75,7 @@
 
         .table-container {
             overflow-x: auto;
-            max-height: 40vh;
+            max-height: 35vh; /* 调整高度以适配页脚 */
         }
         table {
             width: 100%;
@@ -79,6 +85,7 @@
         th { background: #eee; position: sticky; top: 0; }
         th, td { padding: 10px; border: 1px solid #dee2e6; text-align: left; }
         tr:nth-child(even) { background: #fafafa; }
+        
         .count-badge {
             float: right;
             background: var(--primary);
@@ -87,88 +94,95 @@
             border-radius: 10px;
             font-size: 12px;
         }
+
+        /* 页脚样式 */
+        footer {
+            margin-top: 30px;
+            padding: 20px 0;
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            line-height: 1.6;
+            border-top: 1px solid #eee;
+        }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h3 style="margin-top:0">扫码记录器 <span id="total-count" class="count-badge">总数: 0</span></h3>
-        
-        <!-- 扫码区域 -->
-        <div id="reader"></div>
-        
-        <!-- 状态提示 -->
-        <div id="status" class="status-bar status-idle">等待启动摄像头...</div>
+    <div class="container">
+        <div class="card">
+            <h3 style="margin-top:0">扫码记录器 <span id="total-count" class="count-badge">总数: 0</span></h3>
+            
+            <!-- 扫码区域 -->
+            <div id="reader"></div>
+            
+            <!-- 状态提示 -->
+            <div id="status" class="status-bar status-idle">等待启动摄像头...</div>
 
-        <div class="btn-group">
-            <button id="start-btn" onclick="toggleCamera(true)">点击启动摄像头</button>
-            <button id="stop-btn" onclick="toggleCamera(false)">停止摄像头</button>
-            <button id="download-btn" onclick="exportToCSV()">导出 CSV</button>
-            <button id="clear-btn" onclick="clearResults()">清空数据</button>
+            <div class="btn-group">
+                <button id="start-btn" onclick="toggleCamera(true)">点击启动摄像头</button>
+                <button id="stop-btn" onclick="toggleCamera(false)">停止摄像头</button>
+                <button id="download-btn" onclick="exportToCSV()">导出 CSV</button>
+                <button id="clear-btn" onclick="clearResults()">清空数据</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th width="30%">时间</th>
+                            <th>扫描内容</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body">
+                        <!-- 数据行 -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
-    <div class="card">
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th width="30%">时间</th>
-                        <th>扫描内容</th>
-                    </tr>
-                </thead>
-                <tbody id="results-body">
-                    <!-- 数据行 -->
-                </tbody>
-            </table>
-        </div>
-    </div>
+    <!-- 页脚信息 -->
+    <footer>
+        Developed by Colin<br>
+        Version V1.0 （2026.3.27）
+    </footer>
 
     <script>
         let scannedData = [];
         let html5QrCode = null;
-        let audioCtx = null; // 用于生成提示音
+        let audioCtx = null;
         
         const statusEl = document.getElementById('status');
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
 
-        // 初始化提示音功能 (浏览器要求必须由用户点击触发)
         function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
         }
 
-        // 发出“滴”的一声
         function playSuccessSound() {
             if (!audioCtx) return;
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
-
-            oscillator.type = 'sine'; // 正弦波，声音清脆
-            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 音高
-            
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
             gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
             gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.01);
             gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-
             oscillator.start();
             oscillator.stop(audioCtx.currentTime + 0.2);
         }
 
-        function initScanner() {
-            if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("reader");
-            }
-        }
-
         async function toggleCamera(start) {
-            initScanner();
-            initAudio(); // 伴随用户点击初始化音频上下文
+            if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+            initAudio();
 
             if (start) {
                 const config = { fps: 10, qrbox: { width: 250, height: 250 } };
@@ -194,18 +208,15 @@
         }
 
         function onScanSuccess(decodedText) {
-            // 1. 查重逻辑
             const isDuplicate = scannedData.some(item => item.content === decodedText);
             
             if (isDuplicate) {
                 statusEl.innerText = "⚠️ 重复内容，已跳过";
                 statusEl.className = "status-bar status-warn";
-                // 重复时不播放声音，仅轻微震动提示
                 if (navigator.vibrate) navigator.vibrate(50);
                 return;
             }
 
-            // 2. 成功逻辑：播放提示音 + 震动
             playSuccessSound(); 
             if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
@@ -219,7 +230,6 @@
             statusEl.innerText = "✅ 扫描成功！";
             statusEl.className = "status-bar status-success";
             
-            // 自动重置状态文字
             setTimeout(() => {
                 if(html5QrCode && html5QrCode.isScanning) {
                     statusEl.innerText = "正在扫描中...";
@@ -254,7 +264,7 @@
                 scannedData = [];
                 document.getElementById('results-body').innerHTML = "";
                 document.getElementById('total-count').innerText = "总数: 0";
-                statusEl.innerText = "已清空";
+                statusEl.innerText = "已清空数据";
             }
         }
     </script>
