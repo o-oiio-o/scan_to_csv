@@ -11,3 +11,4 @@ A web-based barcode scanner/recorder that works instantly upon opening the webpa
 - **Auto-deduplication**: Automatically filters out duplicate entries.
 - **Sound Feedback**: Provides sound prompts for successful scans.
 - **CSV Export**: Generates data in CSV format for easy analysis and sharing.
+- **Easy Deployment**: Can be easily deployed on Cloudflare Workers & Pages for global access.
